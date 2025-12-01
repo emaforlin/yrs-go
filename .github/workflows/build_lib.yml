@@ -63,7 +63,7 @@ jobs:
               run: |
                   mkdir -p libs
                   cp y-crdt/target/release/libyrs.so libs/
-                  cp y-crdt/yffi/libyrs.h libs/
+                  cp y-crdt/tests-ffi/include/libyrs.h libs/
                   chmod +x libs/libyrs.so
                   echo "Built library info:" >> $GITHUB_STEP_SUMMARY
                   echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
