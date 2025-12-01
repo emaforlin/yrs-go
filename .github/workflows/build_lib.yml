@@ -10,6 +10,9 @@ on:
         # Run weekly to get latest Y-CRDT updates
         - cron: "0 0 * * 0"
 
+permissions:
+    contents: write # Required to push changes back to repo
+
 jobs:
     build-and-test:
         runs-on: ubuntu-latest
