@@ -1,0 +1,107 @@
+name: Build Yrs Library
+
+on:
+    push:
+        branches: [main, develop]
+    pull_request:
+        branches: [main]
+    workflow_dispatch: # Allow manual triggering
+    schedule:
+        # Run weekly to get latest Y-CRDT updates
+        - cron: "0 0 * * 0"
+
+jobs:
+    build-and-test:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  token: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Install Rust
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  toolchain: stable
+
+            - name: Cache Rust dependencies
+              uses: actions/cache@v3
+              with:
+                  path: |
+                      ~/.cargo/bin/
+                      ~/.cargo/registry/index/
+                      ~/.cargo/registry/cache/
+                      ~/.cargo/git/db/
+                      y-crdt/target/
+                  key: ${{ runner.os }}-ycrdt-${{ github.run_id }}
+                  restore-keys: |
+                      ${{ runner.os }}-ycrdt-
+
+            - name: Install build dependencies
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y --no-install-recommends \
+                    build-essential \
+                    cmake \
+                    pkg-config \
+                    ca-certificates
+
+            - name: Clone Y-CRDT repository
+              run: |
+                  git clone https://github.com/y-crdt/y-crdt.git
+                  cd y-crdt
+                  echo "Y-CRDT commit: $(git rev-parse HEAD)" >> $GITHUB_STEP_SUMMARY
+                  echo "Y-CRDT version: $(git describe --tags --always)" >> $GITHUB_STEP_SUMMARY
+
+            - name: Build libyrs.so
+              run: |
+                  cd y-crdt
+                  cargo build --release --package yffi
+
+            - name: Extract library and header
+              run: |
+                  mkdir -p libs
+                  cp y-crdt/target/release/libyrs.so libs/
+                  cp y-crdt/yffi/libyrs.h libs/
+                  chmod +x libs/libyrs.so
+                  echo "Built library info:" >> $GITHUB_STEP_SUMMARY
+                  echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+                  ls -la libs/ >> $GITHUB_STEP_SUMMARY
+                  file libs/libyrs.so >> $GITHUB_STEP_SUMMARY
+                  echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+            - name: Setup Go
+              uses: actions/setup-go@v4
+              with:
+                  go-version: "1.25.4"
+
+            - name: Test Go bindings
+              run: |
+                  export LD_LIBRARY_PATH=$(pwd)/libs:$LD_LIBRARY_PATH
+                  export CGO_CFLAGS="-I$(pwd)/libs"
+                  export CGO_LDFLAGS="-L$(pwd)/libs -lyrs"
+                  go test ./yrs-go -v
+
+            - name: Upload library artifacts
+              uses: actions/upload-artifact@v3
+              with:
+                  name: yrs-library-${{ github.sha }}
+                  path: libs/
+                  retention-days: 90
+
+            - name: Commit updated library (on main branch)
+              if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+              run: |
+                  git config --local user.email "action@github.com"
+                  git config --local user.name "GitHub Action"
+
+                  # Check if files have changed
+                  if ! git diff --quiet libs/ || ! git ls-files --error-unmatch libs/ >/dev/null 2>&1; then
+                    git add libs/
+                    git commit -m "Update libyrs library from Y-CRDT $(cd y-crdt && git rev-parse --short HEAD)"
+                    git push
+                    echo "Library updated and committed" >> $GITHUB_STEP_SUMMARY
+                  else
+                    echo "No library changes to commit" >> $GITHUB_STEP_SUMMARY
+                  fi
