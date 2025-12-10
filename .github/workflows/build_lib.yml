@@ -7,14 +7,14 @@ on:
     branches: [main]
   workflow_dispatch: # Allow manual triggering
   schedule:
-    # Run weekly to get the latest Y-CRDT updates
+    # Run weekly to get latest Y-CRDT updates
     - cron: "0 0 * * 0"
 
 permissions:
   contents: write # Required to push changes back to repo
 
 jobs:
-  check-and-build:
+  build-and-test:
     runs-on: ubuntu-latest
 
     steps:
@@ -36,7 +36,7 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('~/.cargo/registry/index/**') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
@@ -49,38 +49,12 @@ jobs:
             pkg-config \
             ca-certificates
 
-      - name: Exists Y-CRDT repo
-        id: exists-y-crdt-repo
-        run: |
-          if [ -d "y-crdt" ]; then
-            echo "y_crdt_exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "y_crdt_exists=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Clone Y-CRDT repository
-        if: steps.exists-ycrdt-repo.outputs.y_crdt_exists == 'false'
         run: |
           git clone https://github.com/y-crdt/y-crdt.git
           cd y-crdt
           echo "Y-CRDT commit: $(git rev-parse HEAD)" >> $GITHUB_STEP_SUMMARY
           echo "Y-CRDT version: $(git describe --tags --always)" >> $GITHUB_STEP_SUMMARY
-
-      - name: Fetch Y-CRDT repository
-        run: |
-          echo "Update repository y-crdt (git pull)..."
-          cd y-crdt
-          git fetch
-          git pull origin $(git branch --show-current)
-          cd -
-          echo "Y-CRDT commit: $(git -C y-crdt rev-parse HEAD)" >> $GITHUB_STEP_SUMMARY
-          echo "Y-CRDT version: $(git -C y-crdt describe --tags --always)" >> $GITHUB_STEP_SUMMARY
-      - name: Cache Build Artifacts (Target)
-        uses: actions/cache@v3
-        with:
-          path: y-crdt/target/
-          key: ${{ runner.os }}-ycrdt-target-${{ hashFiles('y-crdt/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-ycrdt-target-
 
       - name: Build libyrs.so
         run: |
