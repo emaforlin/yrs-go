@@ -59,7 +59,7 @@ jobs:
                   echo "y_crdt_exists=false" >> $GITHUB_OUTPUT
                 fi              
             - name: Clone Y-CRDT repository
-              if: steps.exists-ycrdt-repo.outputs.y_crdt_exists == 'false'
+              if: steps.exists-ycrdt-repo.outputs.y_crdt_exists == false
               run: |
                   git clone https://github.com/y-crdt/y-crdt.git
                   cd y-crdt
@@ -67,7 +67,7 @@ jobs:
                   echo "Y-CRDT version: $(git describe --tags --always)" >> $GITHUB_STEP_SUMMARY
 
             - name: Fetch Y-CRDT repository
-              if: steps.exists-ycrdt-repo.outputs.y_crdt_exists == 'true'
+              if: steps.exists-ycrdt-repo.outputs.y_crdt_exists == true
               run: |
                   cd y-crdt
                   git pull origin
