@@ -50,13 +50,29 @@ jobs:
                     pkg-config \
                     ca-certificates
 
+            - name: Exists Y-CRDT repo
+              id: exists-y-crdt-repo
+              run: |
+                if [ -d "y-crdt" ]; then
+                  echo "y_crdt_exists=true" >> $GITHUB_OUTPUT
+                else
+                  echo "y_crdt_exists=false" >> $GITHUB_OUTPUT
+                fi              
             - name: Clone Y-CRDT repository
+              if: steps.exists-ycrdt-repo.outputs.y_crdt_exists == 'false'
               run: |
                   git clone https://github.com/y-crdt/y-crdt.git
                   cd y-crdt
                   echo "Y-CRDT commit: $(git rev-parse HEAD)" >> $GITHUB_STEP_SUMMARY
                   echo "Y-CRDT version: $(git describe --tags --always)" >> $GITHUB_STEP_SUMMARY
 
+            - name: Fetch Y-CRDT repository
+              if: steps.exists-ycrdt-repo.outputs.y_crdt_exists == 'true'
+              run: |
+                  cd y-crdt
+                  git pull origin
+                  cd -
+            
             - name: Build libyrs.so
               run: |
                   cd y-crdt
