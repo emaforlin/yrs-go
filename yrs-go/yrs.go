@@ -18,6 +18,11 @@ type YDoc struct {
 	ptr unsafe.Pointer
 }
 
+// YText represents a shared text type in Yrs.
+type YText struct {
+	branch *C.Branch
+}
+
 // NewDoc inicializa un nuevo documento Yrs.
 func NewDoc() *YDoc {
 	// Llama al constructor de C.
@@ -99,6 +104,83 @@ func (d *YDoc) WriteTransaction(origin string) *YTransaction {
 	return &YTransaction{ptr: cTxn}
 }
 
+// NewTransaction is a convenience constructor that creates a write transaction
+// with no origin. This is equivalent to calling WriteTransaction("").
+func (d *YDoc) NewTransaction() *YTransaction {
+	return d.WriteTransaction("")
+}
+
+// GetText gets or creates a new shared YText data type instance as a root-level type.
+// The name must be a valid UTF-8 string that identifies this shared text instance.
+func (d *YDoc) GetText(name string) *YText {
+	if d.ptr == nil {
+		return nil
+	}
+	cDoc := (*C.YDoc)(d.ptr)
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+	
+	branch := C.ytext(cDoc, cName)
+	if branch == nil {
+		return nil
+	}
+	
+	return &YText{branch: branch}
+}
+
+// EncodeStateAsUpdateV1 encodes the entire state of the document as a binary update
+// using lib0 version 1 encoding. This creates a snapshot containing the full state.
+// Returns nil if encoding fails.
+func (d *YDoc) EncodeStateAsUpdateV1(stateVector []byte) []byte {
+	if d.ptr == nil {
+		return nil
+	}
+	
+	// Create a read transaction to encode the state
+	txn := d.ReadTransaction()
+	if txn == nil {
+		return nil
+	}
+	defer txn.Commit()
+	
+	var length C.uint32_t
+	var cResult *C.char
+	
+	if stateVector == nil {
+		// Generate full snapshot
+		cResult = C.ytransaction_state_diff_v1(txn.ptr, nil, 0, &length)
+	} else {
+		// Generate diff from state vector
+		cResult = C.ytransaction_state_diff_v1(txn.ptr, (*C.char)(unsafe.Pointer(&stateVector[0])), C.uint32_t(len(stateVector)), &length)
+	}
+	
+	if cResult == nil {
+		return nil
+	}
+	
+	// Convert C data to Go slice
+	data := C.GoBytes(unsafe.Pointer(cResult), C.int(length))
+	
+	// Free the C memory
+	C.ybinary_destroy(cResult, length)
+	
+	return data
+}
+
+// Insert inserts text at the specified index within the YText.
+// The index must be between 0 and the length of the text (inclusive).
+// attrs parameter is not supported yet (set to nil internally).
+func (t *YText) Insert(txn *YTransaction, index uint32, value string) {
+	if t == nil || t.branch == nil || txn == nil || txn.ptr == nil {
+		return
+	}
+	
+	cValue := C.CString(value)
+	defer C.free(unsafe.Pointer(cValue))
+	
+	C.ytext_insert(t.branch, txn.ptr, C.uint32_t(index), cValue, nil)
+}
+
 // Commit commits and disposes a read-write transaction.
 // After calling Commit, the transaction pointer is nil'ed.
 func (t *YTransaction) Commit() {
@@ -107,6 +189,11 @@ func (t *YTransaction) Commit() {
 	}
 	C.ytransaction_commit(t.ptr)
 	t.ptr = nil
+}
+
+// Free is an alias for Commit. It commits and disposes the transaction.
+func (t *YTransaction) Free() {
+	t.Commit()
 }
 
 // ForceGC triggers a garbage collection of deleted blocks for the document
